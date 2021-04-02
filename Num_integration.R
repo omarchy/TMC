@@ -1,8 +1,8 @@
 # Scenario specification and transformations
-# All dimensions are in µm if not specified
+# All dimensions are in Âµm if not specified
 library(dplyr)
 library(reshape2)
-
+library(xlsx)
 
 MU_X <- rep(c(1, 10, 20, 50, 100, 150, 300, 500, 750), 5)
 RSD_X <- c(rep(0, 9), rep(0.1, 9), rep(0.5, 9), rep(1, 9), rep(2, 9))
@@ -179,10 +179,12 @@ c$Total_surface_area <- c$Total_surface_area*10^(-12)
 TMC_num_integration <- c %>%
   mutate(TMC = (G/((AC_la/Total_surface_area)*Surface_area_per_gram))*Particles_per_gram)
 
-# Converting units of the Surface_area_per_gram column from µm^2 to m^2
+# Converting units of the Surface_area_per_gram column from Âµm^2 to m^2
 tot_SA_per_gram.df <- tot_SA_per_gram.df %>%
   mutate(Surface_area_per_gram = Surface_area_per_gram * 10^(-12))
 
+
+write_xlsx(TMC_num_integration,"TMC_num_int.xlsx")
 
 # Creating a vector of elements of contaminants
 
