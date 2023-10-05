@@ -1,0 +1,518 @@
+#Loading R packages
+
+library(readxl)
+library(writexl)
+library(reshape2)
+library(dplyr)
+library(ggplot2)
+library(ggforce)
+
+
+###########################################
+###The complete TMC plot with all values###
+###########################################
+
+minor_breaks <- rep(1:9, 42)*(10^rep(-20:20, each=9))
+
+TMC_full %>%
+  filter(Microplastic == "PE") %>% #Picking any one MP because different MPs don't effect TMC's
+  ggplot( aes(x=Size, y=TMC))+
+  theme_bw()+
+  geom_hline(yintercept = c(1,100,10^4,10^6,10^8,10^10,10^12), linetype = "solid", color = "black", alpha = 0.5)+
+  geom_vline(xintercept = c("1","10","20","50","100","150","300","500","750"), linetype = "solid", color = "black", alpha = 0.5)+
+  geom_jitter(width= 0.2, height = 0, size = 3,alpha= 1, aes(color = reorder(Contaminant, TMC), shape = reorder(Shape, TMC)))+
+  scale_shape_manual(values = c(15,16,17,18,20,22,21))+
+  #scale_shape_manual(values = c(15,17))+
+  #scale_color_manual(values = c("Blue","Purple"))+
+  scale_color_brewer(palette="Set3")+
+  scale_y_log10(breaks=c(.001,0.01,1,100,10000,1000000,100000000,
+                         10000000000,1000000000000,
+                         100000000000000,10000000000000000), 
+                minor_breaks= minor_breaks)+
+  xlab('Size (µm)')+
+  ylab('TMC (MPs/L)')+ #ggtitle('Threshold microplastics concentration curve')
+  theme(axis.text=element_text(size = 12),
+        axis.title=element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12))+
+  labs(color = "Contaminant (in increasing order of TMC)")+
+  labs(shape = "Shape (in increasing order of TMC)")
+
+
+
+TMC_plot <- TMC_vs_size + xlab('Size (µm)')+
+  ylab('TMC (MP/L)')+ #ggtitle('Threshold microplastics concentration curve')
+  theme(axis.text=element_text(size = 12),
+        axis.title=element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12))+
+  labs(color = "Contaminant (in increasing order of TMC)")
+
+TMC_plot
+##########################################
+######Fitting a curve for antimony########
+##########################################
+
+curve <- TMC_full %>%
+  filter(Contaminant == "Antimony") %>%
+  filter(Shape == "Cube")%>%
+  filter(Microplastic == "PVC")
+
+# Changing data type to numeric from character
+curve$Size <- as.numeric(as.character(curve$Size))
+minor_breaks <- rep(1:9, 42)*(10^rep(-20:20, each=9))
+
+ggplot(curve, aes(x = Size, y = TMC))+
+  theme_bw()+
+  geom_hline(yintercept = c(1,10,100,1000,10^4,10^5), linetype = "solid", color = "black", alpha = 0.2)+
+  geom_vline(xintercept = c(1, 100, 200, 300, 400, 500, 600, 700, 800), linetype = "solid", color = "black", alpha = 0.2)+
+  scale_y_log10(breaks =c(1e-1,1,1e1, 1e2, 1e3, 1e4, 1e5),minor_breaks= minor_breaks)+
+  geom_smooth(formula = y~log(x), method = NULL)+
+  geom_point(size = 2, shape = "square")+
+  scale_x_continuous(breaks = c(1, 100,200,300,400, 500, 600, 700, 800))+
+  
+  xlab('Size (µm)')+
+  ylab('TMC (MPs/L)')+
+  theme(axis.text=element_text(size = 12),
+        axis.title=element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12))
+
+###########################################
+############TMC vs Surface area############
+###########################################
+MPType <- (c(rep(1.16,77), rep(1.18,77), rep(0.93,77), 
+             rep(0.73,77), rep(0.81,77), rep(0.72,77), 
+             rep(1.03,77)))*10^12
+
+Specific_volume <- c(rep(MPType,9))
+TMC_full_new_6Sept <- cbind(TMC_full_6Sept,Specific_volume)
+
+SPa <- function(d){4*pi*(d/2)^2}
+SPv <- function(d){(4/3)*pi*(d/2)^3}
+Ca <- function(d){1.5*pi*d^2}
+Cv <- function(d){pi*d^3/4}
+LCa <- function(d){.105*pi*d^2}
+LCv <- function(d){(0.1^2*pi/4)*d^3}
+SCa <- function(d){0.6*pi*d^2}
+SCv <- function(d){pi*(d/2)^2*(0.1*d)}
+OSa <- function(d,e){2*pi*(d/2)^2 + (pi/e)*log((1+e)/(1-e))*((d/2)*(1-e^2)^0.5)^2}
+OSv <- function(d,e){(pi/6)*d^3*sqrt(1-e^2)}
+CUa <- function(d){6*d^2}
+CUv <- function(d){d^3}
+
+TMC_full_new_6Sept$Size <- as.numeric(as.character(TMC_full_new_6Sept$Size))
+
+surface_area <- TMC_full_new_6Sept %>%
+  mutate(SA_ij = ifelse (Shape == "Sphere",
+                         (SPa(Size)),
+                         
+                         ifelse(Shape == "Long Cylinder", (LCa(Size)),
+                                ifelse(Shape == "Short Cylinder", (SCa(Size)),
+                                       ifelse(Shape == "Cylinder", (Ca(Size)),
+                                              ifelse(Shape == "Oblate Spheroid e=0.2", (OSa(Size,0.2)),
+                                                     ifelse(Shape == "Oblate Spheroid e=0.9", (OSa(Size,0.9)),
+                                                            ifelse(Shape == "Cube", (CUa(Size)),0
+                                                                   
+                                                            ))))))) 
+  )%>%
+  filter(Contaminant == "Antimony")%>%
+  filter(Microplastic == "PVC")
+
+
+TMC_vs_SA <- ggplot(surface_area, aes(x= SA_ij, y=TMC, color =Shape, size=Size))+
+  
+  theme_bw()+
+  geom_point(alpha= 0.80)+
+  scale_shape_manual(values = c(15,20,17,18,19,5,3,11,13))+
+  scale_color_brewer(palette="Paired")+
+  scale_y_log10(breaks=c(0.1,10,1000,100000,10000000,100000000), limits = c(0.1,10000000),  
+                minor_breaks= minor_breaks) +
+  scale_x_log10(breaks=c(0.1, 10, 1000, 100000, 10000000, 100000000),limits = c(0.1, 10^7),
+                minor_breaks= minor_breaks)
+
+TMC_SA_plot<- TMC_vs_SA + xlab('Surface Area (µm^2)')+
+  ylab('TMC (MPs/L)')+ 
+  theme(axis.text=element_text(size = 14),
+        axis.title = element_text(size = 15),
+        legend.title = element_text(size = 15),
+        legend.text = element_text(size = 14))+
+  scale_size_continuous(breaks=sort(unique(surface_area$Size)))
+
+TMC_SA_plot <- TMC_SA_plot + theme(legend.position = "right")
+TMC_SA_plot
+
+
+###########################
+#######SSA vs Size#########
+###########################
+
+ggplot(surface_area, aes(x = Size, y = specific_surface_area, color = Shape))+
+  theme_bw()+
+  geom_point()+
+  scale_shape_manual(values = c(15,16,17,18,19,5,3))+
+  scale_y_log10()+
+  ylab('Specific surface area (µm^2/g)')
+
+###################################
+########TMC vs SSA and Size########
+###################################
+library(tidyr)
+library(cowplot)
+library(egg)
+tmc_vs_ssa_and_s <- surface_area %>%
+  subset(select = c(specific_surface_area, TMC, Size))
+
+tmc_vs_ssa_and_s2 <- gather(tmc_vs_ssa_and_s, key = "variable", value = "value", -TMC)
+
+tmc_vs_ssa_and_s3 <- tmc_vs_ssa_and_s2 %>%
+  mutate(value2 = ifelse (variable == "specific_surface_area", 
+                          log10(value),
+                          ifelse (variable == "Size",
+                                  value,0)))
+
+ggplot(surface_area, aes(x=specific_surface_area, y=TMC)) +
+  theme_bw()+
+  geom_point()+
+  scale_y_log10()+
+  scale_x_log10()
+#facet_wrap(~variable, scales = "free_x", strip.position = "bottom")+
+#theme(strip.background = element_blank(),
+#     strip.placement = "outside")+
+#labs(x = NULL)
+
+ggarrange(TMC_plot,
+          TMC_SSA_plot +
+            theme(axis.text.y = element_blank(),
+                  axis.ticks.y = element_blank(),
+                  axis.title.y = element_blank() ),
+          nrow = 1)
+
+legend <- get_legend(TMC_vs_SSA)
+
+
+
+
+################################
+#########SSA vs Shape###########
+################################
+
+SSA_vs_Shape <-  surface_area %>%
+  filter(Size == 100) %>%
+  filter(Microplastic == "PVC") %>%
+  filter(Contaminant == "Antimony")%>%
+  mutate(rel_ssa = specific_surface_area/min(specific_surface_area))
+
+ggplot(SSA_vs_Shape, aes(x= reorder(Shape, specific_surface_area)), y=specific_surface_area)+
+  theme_bw()+
+  #geom_segment(aes(xend =Shape,yend = 0.8),linewidth=2.5) +
+  geom_point(size = 3,alpha= 0.70, color = "blue")+
+  scale_y_log10(limits = c(10^10, 10^12))+
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red")+
+  coord_flip()+
+  ylab("Relative specific surface area")+
+  xlab("Shape")+
+  theme(axis.text = element_text(size = 12), axis.title = element_text(size = 14))
+
+
+#############################################
+#####Relative Total particles/g vs Shape#####
+
+#1000 um particles were used
+
+Shape <- c("Cube","Sphere","Cylinder","Long Cylinder", "Short Cylinder",
+           "Oblate Spheroid e=0.2","Oblate Spheroid e=0.9")
+ppg <- c(720,1375,917,91673,9167,1403,3155)
+particles_vs_shape <- data.frame(Shape,ppg)
+
+particles_vs_shape <- particles_vs_shape %>%
+  mutate(rel_ppg = ppg/min(ppg))
+
+ggplot(particles_vs_shape, aes(x = reorder(shape,ppg),y=rel_ppg))+
+  geom_segment(aes(xend =shape,yend = 0.8),size=2.5, alpha =0.75) +
+  geom_point(color = "red", size = 3,alpha=0.7) +
+  coord_flip() +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red")+
+  theme_bw()+
+  scale_y_log10()+
+  labs(x= "Shape", y = "Relative total particles")+
+  theme(axis.text = element_text(size = 12), axis.title = element_text(size = 14))
+
+
+#SSA_vs_Shape$Shape <- as.character(SSA_vs_Shape$Shape, levels = SSA_vs_Shape$Shape[order(SSA_vs_Shape$rel_ssa)])
+
+
+ssa_ppg <- inner_join(particles_vs_shape, SSA_vs_Shape)
+
+
+
+########################################################
+#########Microplastics size vs Paper####################
+########################################################
+
+library(ggplot2)
+library(dplyr)
+library(reshape2) 
+library(readxl)
+
+Microplastic_data <- read_excel("O:/Research_4/Work/Paper/TMC paper/New submission AWWA/Microplastics latest.xlsx")
+
+size_vs_paper <- Microplastic_data %>%
+  filter(Environment %in% c("Freshwater", "DWTP", "WWTP")) %>%
+  group_by(Environment) %>%
+  arrange(Reference, desc()) %>%
+  filter(`Size reported` == "Y")%>%
+  subset(select = c("Environment","S_Min", "S_Mean", "S_Max", "Reference"))
+
+s_fw <- size_vs_paper %>%
+  filter(Environment == "Freshwater")
+
+s_dwtp <- size_vs_paper %>%
+  filter(Environment == "DWTP")
+
+s_wwtp <- size_vs_paper %>%
+  filter(Environment == "WWTP")
+
+
+size_vs_paper %>%
+  ggplot(aes(x=Reference,y=S_Max), color = Environment) + 
+  
+  theme_bw()+
+  geom_segment(aes(xend =Reference,yend = S_Min),size=0.5) +
+  geom_hline(yintercept = 100, color = "blue", size = .90) +
+  #geom_text(size = 5, vjust=-3) +
+  geom_point(aes(group = Environment),size = 3, shape = "|", color = "black", alpha = 0.7)+
+  geom_point(aes(y=S_Min, group = Environment), size = 3, shape = 19, color = "black", alpha = 0.7) +
+  geom_point(aes(y=S_Mean, group = Environment), size = 3, color = "black", alpha = 0.7) +
+  
+  facet_grid(Environment~., scales = "free_y", space = "free_y") +
+  
+  
+  
+  theme(strip.text.y = element_text(angle = 0)) +
+  scale_colour_brewer(palette="Set2")+
+  scale_y_log10(breaks=c(0.01,1,10,100,1000, 5000, 10000)) +
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14),
+        legend.position = "none") +
+  
+  coord_flip()+
+  labs(y = "Size (µm)") 
+
+
+
+
+
+#Graph for PVC SP MPs
+TMC_matrix_new$Size <- as.numeric(as.character(TMC_matrix_new$Size))
+
+TMC_summary <- TMC_matrix_new %>%
+  filter(Microplastic == "PVC", Shape == "Cube")
+
+ggplot(TMC_summary, aes(x=Size, y=TMC))+
+  geom_line(size = 2,alpha=0.75, aes(color = Contaminant))+
+  geom_point(size = 3, alpha = 0.60, aes(color = Contaminant))+
+  scale_color_brewer(palette="Paired")+
+  theme_bw()+
+  scale_y_log10(breaks=c(100,10000,1000000,100000000,10000000000,1000000000000,100000000000000))+
+  
+  scale_x_continuous(breaks=c(1,100,200,300,400,500,600,700), limits=c(1,750))+
+  geom_hline(yintercept = 3605, size = 1, color = "Brown", alpha = 0.6)+
+  #geom_vline(xintercept = 100, size = 1, color = "Blue", alpha = 0.6)+
+  ylab('TMC (particles/L)')+
+  theme(legend.position="top")
+
+##########################
+# Grouped by contaminants#
+##########################
+TMC_summary <- TMC_matrix_new %>%
+  filter(Shape == "Cube" &
+           Microplastic == "PVC" )
+
+TMC_summary_new <- TMC_summary %>%
+  mutate(TMC = TMC*1000)
+
+#Identifying values for scale breaks on y axis
+p <-TMC_summary_new %>%
+  filter(Size == 100)
+
+
+
+breaks <- 10^(-10:10)
+minor_breaks <- rep(1:9, 42)*(10^rep(-20:20, each=9))
+ggplot(TMC_summary, aes(x=Size, y=TMC, group = Contaminant))+
+  geom_line(size = 1,alpha=0.75, aes(color = Contaminant))+
+  geom_point(size = 2.5, alpha = 0.60, aes(shape = Contaminant))+
+  scale_shape_manual(values=c(0,1,2,3,4,5,6,7,8,9,15,16))+
+  #scale_color_brewer(palette="Paired")+
+  theme_bw()+
+  # scale_y_log10(breaks=c(1*10^5,276,1.55*10^4,1.13*10^6,2.56*10^10,10^7,10^9,10^13,10^15),
+  # minor_breaks=minor_breaks)+
+  scale_y_log10(breaks=c(0.1, 10, 10^3,10^5,10^7,10^9,10^11,10^13,10^15,10^17),limits = c(0.1,10^13),
+                minor_breaks=minor_breaks)+
+  scale_x_continuous(breaks=c(1,100,200,300,400,500,600,700), limits=c(1,750))+
+  #geom_hline(yintercept = c(24, 187, 3605), size = 1, color = "Brown", alpha = 0.6)+
+  
+  #geom_vline(xintercept = 100, size = 1, color = "Blue", alpha = 0.6)+
+  ylab('TMC (#/L)')+
+  xlab('Size (µm)')+
+  theme(legend.position="top",axis.text=element_text(size=12),
+        axis.title=element_text(size=14),legend.title = element_text(size = 14),
+        legend.text = element_text(size = 14))
+
+##########################################################
+###TMC vs Adsorption capacity of Spheres of 750 um size###
+##########################################################
+
+TMC_vs_AC <- TMC_full %>%
+  filter(Size == 750) %>%
+  filter(Shape == "Cube") %>%
+  filter(Microplastic == "PVC")
+
+breaks <- 10^(-10:10)
+minor_breaks <- rep(1:9, 42)*(10^rep(-20:20, each=9))  
+
+ggplot(TMC_vs_AC, aes(x = AC_la, y = TMC))+
+  geom_point(size = 2)+
+  geom_smooth(method = "lm", se = FALSE,
+              linewidth = 1.25, color = "red")+
+  theme_bw()+
+  
+  scale_y_log10(breaks = c(0.1,1,10,100,1000,10000, 100000, 1000000, 10000000, 10000000), 
+                limits = c(0.1,1000000),
+                minor_breaks=minor_breaks)+
+  scale_x_log10(breaks=c(0.0001,0.001,0.01,0.1,1,10,100),
+                minor_breaks=minor_breaks)+
+  ylab('TMC (MPs/L)')+
+  xlab('Adsorption capacity (mg/g)')+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14),
+        legend.text = element_text(size = 14))
+
+TMC_summary_new %>%
+  filter(Contaminant != "Antimony") %>%
+  summarize(min(TMC))
+
+library(readxl)
+
+MP_Conc <- read_excel("O:/Research_4/Work/Paper/TMC paper/New submission AWWA/Microplastics_concentration.xlsx")
+
+View(MP_Conc)
+#Well operated treatment
+TMC = 184
+TMC_without_Sb <- 984
+
+library(dplyr)
+MP_Conc_new <- MP_Conc %>% 
+  mutate(Concentration=Max*1) %>% 
+  mutate(Threshold_exceeded = Concentration > TMC ) %>%
+  arrange(Concentration)
+
+#Finding lowest TMC without antimony
+a <- TMC_matrix_new %>%
+  filter(Contaminant != "Antimony")
+
+min(a$TMC)
+
+####################################################
+#####Microplastics concentration vs. Location#######
+####################################################
+
+library(readxl)
+
+MP_Conc <- read_excel("O:/Research_4/Work/Paper/TMC paper/New submission AWWA/Microplastics_concentration.xlsx")
+
+View(MP_Conc)
+#Well operated treatment
+TMC = 184
+TMC_without_Sb <- 984
+
+library(dplyr)
+MP_Conc_new <- MP_Conc %>% 
+  mutate(Concentration=Max*1) %>% 
+  mutate(Threshold_exceeded = Concentration > TMC ) %>%
+  arrange(Concentration)
+
+#Finding lowest TMC without antimony
+a <- TMC_matrix_new %>%
+  filter(Contaminant != "Antimony")
+
+min(a$TMC)
+
+library(ggplot2)
+
+ggplot(MP_Conc_new, aes(x=reorder(Location, Concentration),y= Concentration, label = Concentration)) + 
+  
+  theme_classic()+
+  geom_segment(aes(xend =Location,yend = 0.00001, color=Threshold_exceeded),size=2) +
+  #geom_text(size = 5, vjust=-3) +
+  geom_point(size = 2, color = "black", alpha = 0.7)+
+  scale_colour_brewer(palette="Paired")+
+  #scale_color_brewer(palette.colors())+
+  scale_y_log10() +
+  
+  geom_hline(yintercept = 984, color="blue", linetype="longdash", size = 1) +
+  
+  geom_hline(yintercept = 184, color="red", linetype="dashed", size = 1) +
+  
+  geom_hline(yintercept = .98, color="purple", linetype="dotdash", size = 1) +
+  
+  geom_hline(yintercept = .18, color="black", linetype="dotted", size = 1) +
+  
+  theme(axis.text = element_text(size = 10),
+        axis.title = element_text(size = 14),
+        legend.position = "none") +
+  
+  coord_flip()+
+  labs(y = "Concentration (#/L)", x = "Location")
+
+
+##################################################
+########TMC vs size (Microplastics type)##########
+##################################################
+
+#Picking antimony and mercury
+TMC_matrix_mp_type <- TMC_matrix_new %>%
+  filter((Contaminant == "Antimony" &
+            (Shape == "Cube")))
+
+TMC_matrix_mp_type <- TMC_matrix_mp_type %>%
+  mutate(Microplastic = replace(Microplastic, Microplastic == "PE", "LDPE"))
+
+TMC_matrix_mp_type$Size <- as.numeric(as.character(TMC_matrix_mp_type$Size))
+
+TMC_vs_size<- ggplot(TMC_matrix_mp_type, aes(x=Size, y=TMC))+
+  theme_bw()+
+  geom_hline(yintercept = c(.1,1,100,10^4,10^6), linetype = "solid", color = "black", alpha = 0.2)+
+  geom_vline(xintercept = c(1,100,200,300,400,500,600,700,800), linetype = "solid", color = "black", alpha = 0)+
+  geom_jitter(width = 0.4, height = 0, size = 2,alpha= 0.75, aes(shape = Microplastic))+
+  scale_shape_manual(values = c(15,16,17,18,20,22,21))+
+  #scale_shape_manual(values = c(15,17))+
+  #scale_color_manual(values = c("#0072B2","#CC66FF"))+
+  scale_color_brewer(palette="Dark2")+
+  scale_y_log10(breaks=c(.001,0.01,1,100,10000,1000000,100000000,
+                         10000000000,1000000000000,
+                         100000000000000,10000000000000000, 1000000000000000000), 
+                minor_breaks= minor_breaks)
+
+
+TMC_plot <- TMC_vs_size + xlab('Size (µm)')+
+  ylab('TMC (#/L)')+ #ggtitle('Threshold microplastics concentration curve')
+  theme(axis.text=element_text(size = 12),
+        axis.title=element_text(size = 14),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12))
+TMC_plot
+
+
+c <- TMC_matrix_mp_type %>%
+  filter(Size == 1)
+
+c$TMC <- as.numeric(c$TMC)
+
+ggplot(c, aes(x=Size, y=TMC))+
+  theme_bw()+
+  scale_y_log10()+
+  scale_shape_manual(values = c(15,16,17,18,20,22,21))+
+  geom_point(size = 4, aes( shape = Microplastic))
+
